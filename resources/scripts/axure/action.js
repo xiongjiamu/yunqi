@@ -612,7 +612,7 @@
 
         for(var i = 0; i < action.objectsToSetOpacity.length; i++) {
             var opacityInfo = action.objectsToSetOpacity[i].opacityInfo;
-            var elementIds = $ax.getElementIdsFromPath(action.objectsToSetOpacity[i].objectPath);
+            var elementIds = $ax.getElementIdsFromPath(action.objectsToSetOpacity[i].objectPath, eventInfo);
 
             for(var j = 0; j < elementIds.length; j++) {
                 var elementId = elementIds[j];
@@ -726,15 +726,23 @@
         var fixedInfo = $ax.dynamicPanelManager.getFixedInfo(elementId);
         var xProp = 'left';
         var xDiff = '+=';
-        if(fixedInfo && fixedInfo.horizontal == 'right') {
-            xProp = 'right';
-            xDiff = '-=';
+        if(fixedInfo) {
+            if(fixedInfo.horizontal == 'right') {
+                xProp = 'right';
+                xDiff = '-=';
+            } else if(fixedInfo.horizontal == 'center') {
+                xProp = 'margin-left';
+            }
         }
         var yProp = 'top';
         var yDiff = '+=';
-        if(fixedInfo && fixedInfo.vertical == 'bottom') {
-            yProp = 'bottom';
-            yDiff = '-=';
+        if(fixedInfo) {
+            if(fixedInfo.vertical == 'bottom') {
+                yProp = 'bottom';
+                yDiff = '-=';
+            } else if(fixedInfo.vertical == 'middle') {
+                yProp = 'margin-top';
+            }
         }
 
         var css = {};
@@ -762,6 +770,9 @@
         var widgetDragInfo = eventInfoCopy.dragInfo;
         var jobj = $jobj(elementId);
 
+        var startX;
+        var startY;
+
         switch(moveInfo.moveType) {
         case "location":
             // toRatio is ignoring anything before start since that has already taken effect we just know whe have from start to len to finish
@@ -780,8 +791,6 @@
             // If this is final stop for this move, then clear out the result so next move won't use it
             if(stopInfo.instant || stopInfo.end == stopInfo.len) comboState.moveResult = undefined;
 
-            var startX;
-            var startY;
             if (layerInfo) {
                 startX = layerInfo.left;
                 startY = layerInfo.top;
@@ -792,10 +801,14 @@
             } else {
                 startX = $ax('#' + elementId).locRelativeIgnoreLayer(false);
                 startY = $ax('#' + elementId).locRelativeIgnoreLayer(true);
+                if(jobj.css('position') == 'fixed') {
+                    startX -= $(window).scrollLeft();
+                    startY -= $(window).scrollTop();
+                }
             }
 
-            xValue = (xValue - startX) * toRatio;
-            yValue = (yValue - startY) * toRatio;
+            xValue = xValue == '' ? 0 : (xValue - startX) * toRatio;
+            yValue = yValue == '' ? 0 : (yValue - startY) * toRatio;
 
             break;
         case "delta":
@@ -852,6 +865,14 @@
         if (options && options.boundaryExpr) {
             //$ax.public.fn.removeCompound(jobj);
 
+            if(jobj.css('position') == 'fixed') {
+                //swap page coordinates with fixed coordinates
+                options.boundaryExpr.leftExpr.value = options.boundaryExpr.leftExpr.value.replace('.top', '.topfixed').replace('.left', '.leftfixed').replace('.bottom', '.bottomfixed').replace('.right', '.rightfixed');
+                options.boundaryExpr.leftExpr.stos[0].leftSTO.prop = options.boundaryExpr.leftExpr.stos[0].leftSTO.prop + 'fixed';
+                options.boundaryStos.boundaryScope.direcval0.value = options.boundaryStos.boundaryScope.direcval0.value.replace('.top', '.topfixed').replace('.left', '.leftfixed').replace('.bottom', '.bottomfixed').replace('.right', '.rightfixed');
+                options.boundaryStos.boundaryScope.direcval0.stos[0].leftSTO.prop = options.boundaryStos.boundaryScope.direcval0.stos[0].leftSTO.prop + 'fixed';
+            }
+
             if(moveWithThis && (xValue || yValue)) {
                 _updateLeftExprVariable(options.boundaryExpr, xValue.toString(), yValue.toString());
             }
@@ -872,15 +893,27 @@
                         }
                     }
 
+                    if(layerInfo) {
+                        startX = layerInfo.left;
+                        startY = layerInfo.top;
+                    } else {
+                        startX = $ax('#' + elementId).locRelativeIgnoreLayer(false);
+                        startY = $ax('#' + elementId).locRelativeIgnoreLayer(true);
+                        if(jobj.css('position') == 'fixed') {
+                            startX -= $(window).scrollLeft();
+                            startY -= $(window).scrollTop();
+                        }
+                    }
+
                     if(boundaryStoInfo.ySto) {
-                        var currentTop = layerInfo ? layerInfo.top : Number(jobj.css('top').replace('px', ''));
+                        var currentTop = layerInfo ? layerInfo.top : startY;
                         var newTop = $ax.evaluateSTO(boundaryStoInfo.ySto, boundaryStoInfo.boundaryScope, eventInfoCopy);
                         if(moveTo) yValue = newTop;
                         else yValue = newTop - currentTop;
                     }
 
                     if(boundaryStoInfo.xSto) {
-                        var currentLeft = layerInfo ? layerInfo.left : Number(jobj.css('left').replace('px', ''));
+                        var currentLeft = layerInfo ? layerInfo.left : startX;
                         var newLeft = $ax.evaluateSTO(boundaryStoInfo.xSto, boundaryStoInfo.boundaryScope, eventInfoCopy);
                         if(moveTo) xValue = newLeft;
                         else xValue = newLeft - currentLeft;
@@ -937,27 +970,29 @@
         rotateInfo.options.easing = options.easing;
         rotateInfo.options.duration = options.duration;
 
+        var eventInfoCopy = $ax.eventCopy(eventInfo);
+        eventInfoCopy.targetElement = elementId;
+
         //calculate degree value at start of animation
         var rotateDegree;
         var offset = {};
         var eval = function(boundingRect) {
-            var oldTarget = eventInfo.targetElement;
-            eventInfo.targetElement = elementId;
-            rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfo));
-            offset.x = Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfo));
-            offset.y = Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfo));
-            eventInfo.targetElement = oldTarget;
+            rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfoCopy));
+            offset.x = Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfoCopy));
+            offset.y = Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfoCopy));
             if(!rotateInfo.options.clockwise) rotateDegree = -rotateDegree;
 
             _updateOffset(offset, rotateInfo.anchor, boundingRect);
         }
 
-        if (moveInfo) var moveOptions = { dragInfo: eventInfo.dragInfo, duration: options.duration, easing: options.easing };
+        if(moveInfo) {
+            var moveOptions = { dragInfo: eventInfoCopy.dragInfo, duration: options.duration, easing: options.easing, boundaryExpr: moveInfo.options.boundaryExpr, boundaryStos: moveInfo.options.boundaryStos };
+        }
 
         var obj = $obj(elementId);
 
         if($ax.public.fn.IsLayer(obj.type)) {
-            var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true);
+            var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true, true);
             if(childrenIds.length == 0) return;
 
             var animations = [];
@@ -977,7 +1012,7 @@
 
                     moveDelta = { x: 0, y: 0 };
                     if (moveInfo) {
-                        moveDelta = _getMoveLoc(elementId, moveInfo, eventInfo, options.moveStop, idToResizeMoveState[elementId], moveOptions, boundingRect);
+                        moveDelta = _getMoveLoc(elementId, moveInfo, eventInfoCopy, options.moveStop, idToResizeMoveState[elementId], moveOptions, boundingRect);
                         if (moveDelta.moveTo) {
                             moveDelta.x -= $ax.getNumFromPx($jobj(elementId).css('left'));
                             moveDelta.y -= $ax.getNumFromPx($jobj(elementId).css('top'));
@@ -1014,10 +1049,12 @@
                 id: elementId,
                 type: queueTypes.rotate,
                 func: function () {
-                    eval($axure.fn.getWidgetBoundingRect(elementId));
+                    var jobj = $jobj(elementId);
+                    var unrotatedDim = { width: $ax.getNumFromPx(jobj.css('width')), height: $ax.getNumFromPx(jobj.css('height')) };
+                    eval(unrotatedDim);
                     var delta = { x: 0, y: 0 };
                     if(moveInfo) {
-                        delta = _getMoveLoc(elementId, moveInfo, eventInfo, options.moveStop, idToResizeMoveState[elementId], moveOptions);
+                        delta = _getMoveLoc(elementId, moveInfo, eventInfoCopy, options.moveStop, idToResizeMoveState[elementId], moveOptions);
                         if(delta.moveTo) {
                             delta.x -= $ax.getNumFromPx($jobj(elementId).css('left'));
                             delta.y -= $ax.getNumFromPx($jobj(elementId).css('top'));
@@ -1026,7 +1063,7 @@
 
                     $ax.event.raiseSyntheticEvent(elementId, 'onRotate');
                     if(offset.x == 0 && offset.y == 0) {
-                        _rotateSingle(elementId, rotateDegree, rotateInfo.rotateType == 'location', delta, options);
+                        _rotateSingle(elementId, rotateDegree, rotateInfo.rotateType == 'location', delta, options, options.stop);
                         _fireAnimationFromQueue(elementId, queueTypes.move);
                         if(moveInfo) $ax.event.raiseSyntheticEvent(elementId, 'onMove');
                         return;
@@ -1048,24 +1085,40 @@
         if (anchor.indexOf('bottom') != -1) offset.y += boundingRect.height / 2;
     }
 
-    var _rotateSingle = function(elementId, rotateDegree, rotateTo, delta, options) {
-        // this function will no longer handle compound vectors.
-        $ax('#' + elementId).rotate(rotateDegree, options.easing, options.duration, rotateTo, true);
+    var _rotateSingle = function(elementId, rotateDegree, rotateTo, delta, options, stop) {
+        var degreeDelta = _applyRotateStop(rotateDegree, $ax.move.getRotationDegree(elementId), rotateTo, stop);
+        $ax('#' + elementId).rotate(degreeDelta, options.easing, options.duration, false, true);
         if(delta.x || delta.y) _moveSingleWidget(elementId, delta, options);
     };
 
     var _rotateSingleOffset = function (elementId, rotateDegree, rotateTo, delta, offset, options, stop, resizeOffset) {
         var obj = $obj(elementId);
-        var degreeDelta;
-        if(!rotateTo) degreeDelta = rotateDegree;
-        else degreeDelta = rotateDegree - $ax.move.getRotationDegree(elementId);
+        var currRotation = $ax.move.getRotationDegree(elementId);
 
-        var ratio = stop.instant ? 1 : (stop.end - stop.start) / (stop.len - stop.start);
-        degreeDelta *= ratio;
+        // Need to fix offset. Want to to stay same place on widget after rotation, so need to take the offset and rotate it to where it should be.
+        if(currRotation) {
+            offset = $axure.fn.getPointAfterRotate(currRotation, offset, { x: 0, y: 0 });
+        }
+
+        var degreeDelta = _applyRotateStop(rotateDegree, currRotation, rotateTo, stop);
         var widgetCenter = $axure.fn.getWidgetBoundingRect(elementId).centerPoint;
         
         var rotate = $.inArray(obj.type, widgetRotationFilter) != -1;
         $ax('#' + elementId).circularMoveAndRotate(degreeDelta, options, widgetCenter.x + offset.x, widgetCenter.y + offset.y, rotate, delta, resizeOffset);
+    }
+
+    var _applyRotateStop = function(rotateDegree, currRotation, to, stop) {
+        var degreeDelta;
+        var ratio;
+        if(to) {
+            degreeDelta = rotateDegree - currRotation;
+            ratio = stop.instant ? 1 : (stop.end - stop.start) / (stop.len - stop.start);
+        } else {
+            degreeDelta = rotateDegree;
+            ratio = stop.instant ? 1 : (stop.end - stop.start) / stop.len;
+        }
+
+        return degreeDelta * ratio;
     }
 
 
@@ -1121,15 +1174,18 @@
         resizeInfo.easing = options.easing;
         resizeInfo.duration = options.duration;
 
+        var eventInfoCopy = $ax.eventCopy(eventInfo);
+        eventInfoCopy.targetElement = elementId;
+
         var moves = moveInfo || resizeInfo.anchor != "top left" || ($ax.public.fn.IsDynamicPanel(axObject.type) &&
         ((axObject.fixedHorizontal && axObject.fixedHorizontal == 'center') || (axObject.fixedVertical && axObject.fixedVertical == 'middle'))) ||
         (rotateInfo && (rotateInfo.offsetX || rotateInfo.offsetY));
 
         if(moveInfo) {
-            var moveOptions = { dragInfo: eventInfo.dragInfo, duration: options.duration, easing: options.easing };
+            var moveOptions = { dragInfo: eventInfoCopy.dragInfo, duration: options.duration, easing: options.easing, boundaryExpr: moveInfo.options.boundaryExpr, boundaryStos: moveInfo.options.boundaryStos };
         }
 
-        var idToResizeMoveState = _getIdToResizeMoveState(eventInfo);
+        var idToResizeMoveState = _getIdToResizeMoveState(eventInfoCopy);
 
         var animations = [];
         if($ax.public.fn.IsLayer(axObject.type)) {
@@ -1147,13 +1203,13 @@
                 func: function () {
                     $ax.visibility.pushContainer(elementId, false);
                     boundingRect = $ax.public.fn.getWidgetBoundingRect(elementId);
-                    var size = _getSizeFromInfo(resizeInfo, eventInfo, boundingRect.width, boundingRect.height, elementId);
+                    var size = _getSizeFromInfo(resizeInfo, eventInfoCopy, boundingRect.width, boundingRect.height, elementId);
                     deltaLoc = { x: 0, y: 0 };
 
                     var stop = options.stop;
                     var ratio = stop.instant ? 1 : (stop.end - stop.start) / (stop.len - stop.start);
-                    widthChangedPercent = (size.width - boundingRect.width) / boundingRect.width * ratio;
-                    heightChangedPercent = (size.height - boundingRect.height) / boundingRect.height * ratio;
+                    widthChangedPercent = Math.round(size.width - boundingRect.width) / boundingRect.width * ratio;
+                    heightChangedPercent = Math.round(size.height - boundingRect.height) / boundingRect.height * ratio;
                     resizeOffset = _applyAnchorToResizeOffset(widthChangedPercent * boundingRect.width, heightChangedPercent * boundingRect.height, resizeInfo.anchor);
                     if(stop.instant || stop.end == stop.len) idToResizeMoveState[elementId].resizeResult = undefined;
 
@@ -1167,7 +1223,7 @@
                 id: elementId,
                 type: queueTypes.move,
                 func: function() {
-                    deltaLoc = _getMoveLoc(elementId, moveInfo, eventInfo, options.moveStop, idToResizeMoveState[elementId], moveOptions, boundingRect);
+                    deltaLoc = _getMoveLoc(elementId, moveInfo, eventInfoCopy, options.moveStop, idToResizeMoveState[elementId], moveOptions, boundingRect);
                     $ax.visibility.pushContainer(elementId, false);
                     _fireAnimationFromQueue(elementId, queueTypes.move);
                     $ax.event.raiseSyntheticEvent(elementId, 'onMove');
@@ -1178,7 +1234,7 @@
                 type: queueTypes.rotate,
                 func: function () {
                     resizeOffset = _applyAnchorToResizeOffset(widthChangedPercent * boundingRect.width, heightChangedPercent * boundingRect.height, resizeInfo.anchor);
-                    var rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfo));
+                    var rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfoCopy));
                     degreeDelta = _initRotateLayer(elementId, rotateInfo, rotateDegree, options, options.rotateStop);
                     _fireAnimationFromQueue(elementId, queueTypes.rotate);
                     $ax.event.raiseSyntheticEvent(elementId, 'onRotate');
@@ -1210,7 +1266,7 @@
                                 };
                                 $ax('#' + childId).resize(css, resizeInfo, true, moves, onComplete);
                                 if(rotateInfo) {
-                                    var offset = { x: Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfo)), y: Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfo)) };
+                                    var offset = { x: Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfoCopy)), y: Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfo)) };
                                     _updateOffset(offset, resizeInfo.anchor, boundingRect);
                                     var centerPoint = { x: boundingRect.centerPoint.x + offset.x, y: boundingRect.centerPoint.y + offset.y };
                                     $ax('#' + childId).circularMoveAndRotate(degreeDelta, options, centerPoint.x, centerPoint.y, rotate, currDeltaLoc, resizeOffset, resizeDeltaMove, onComplete);
@@ -1243,17 +1299,17 @@
                     var stop = options.stop;
                     var ratio = stop.instant ? 1 : (stop.end - stop.start) / (stop.len - stop.start);
 
-                    var size = _getSizeFromInfo(resizeInfo, eventInfo, oldHeight, oldWidth, elementId);
+                    var size = _getSizeFromInfo(resizeInfo, eventInfoCopy, oldWidth, oldHeight, elementId);
                     var newWidth = size.width;
                     var newHeight = size.height;
-                    var deltaWidth = (newWidth - oldWidth)*ratio;
-                    var deltaHeight = (newHeight - oldHeight)*ratio;
+                    var deltaWidth = Math.round(newWidth - oldWidth) * ratio;
+                    var deltaHeight = Math.round(newHeight - oldHeight) * ratio;
                     newWidth = oldWidth + deltaWidth;
                     newHeight = oldHeight + deltaHeight;
 
                     var delta = { x: 0, y: 0 };
                     if(moveInfo) {
-                        delta = _getMoveLoc(elementId, moveInfo, eventInfo, options.moveStop, idToResizeMoveState[elementId], moveOptions);
+                        delta = _getMoveLoc(elementId, moveInfo, eventInfoCopy, options.moveStop, idToResizeMoveState[elementId], moveOptions);
                         if (delta.moveTo) {
                             delta.x -= $ax.getNumFromPx($jobj(elementId).css('left'));
                             delta.y -= $ax.getNumFromPx($jobj(elementId).css('top'));
@@ -1263,29 +1319,31 @@
                     var rotateHandlesMove = false;
                     var offset = { x: 0, y: 0 };
                     if(rotateInfo) {
-                        offset.x = Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfo));
-                        offset.y = Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfo));
+                        offset.x = Number($ax.expr.evaluateExpr(rotateInfo.offsetX, eventInfoCopy));
+                        offset.y = Number($ax.expr.evaluateExpr(rotateInfo.offsetY, eventInfoCopy));
                         _updateOffset(offset, rotateInfo.anchor, $axure.fn.getWidgetBoundingRect(elementId));
                         rotateHandlesMove = Boolean(rotateInfo && (offset.x || offset.y || rotateInfo.anchor != 'center'));
                         $ax.event.raiseSyntheticEvent(elementId, 'onRotate');
                     }
 
                     var css = null;
+                    var rootLayer = null;
                     if(deltaHeight != 0 || deltaWidth != 0) {
-                        css = _getCssForResizingWidget(elementId, eventInfo, resizeInfo.anchor, newWidth, newHeight, oldWidth, oldHeight, delta, options.stop, !rotateHandlesMove);
+                        rootLayer = $ax.move.getRootLayer(elementId);
+                        if(rootLayer) $ax.visibility.pushContainer(rootLayer, false);
+                        css = _getCssForResizingWidget(elementId, eventInfoCopy, resizeInfo.anchor, newWidth, newHeight, oldWidth, oldHeight, delta, options.stop, !rotateHandlesMove);
                         idToResizeMoveState[elementId].resizeResult = undefined;
                     }
-                    
 
                     if(rotateInfo) {
-                        var rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfo));
+                        var rotateDegree = parseFloat($ax.expr.evaluateExpr(rotateInfo.degree, eventInfoCopy));
 
                         if(rotateHandlesMove) {
                             var resizeOffset = _applyAnchorToResizeOffset(deltaWidth, deltaHeight, rotateInfo.anchor);
                             _rotateSingleOffset(elementId, rotateDegree, rotateInfo.rotateType == 'location', delta, offset, options, options.rotateStop, resizeOffset);
                         } else {
                             // Not handling move so pass in nop delta
-                            _rotateSingle(elementId, rotateDegree, rotateInfo.rotateType == 'location', { x: 0, y: 0 }, options);
+                            _rotateSingle(elementId, rotateDegree, rotateInfo.rotateType == 'location', { x: 0, y: 0 }, options, options.rotateStop);
                         }
                     } else _moveSingleWidget(elementId, delta, options);
 
@@ -1293,17 +1351,21 @@
                     if(moveInfo) $ax.event.raiseSyntheticEvent(elementId, 'onMove');
 
                     //$ax.event.raiseSyntheticEvent(elementId, 'onResize');
-                    if(css) $ax('#' + elementId).resize(css, resizeInfo, true, moves);
-                    else {
+                    if (css) {
+                        $ax('#' + elementId).resize(css, resizeInfo, true, moves, function () {
+                            if(rootLayer) $ax.visibility.popContainer(rootLayer, false);
+                        });
+                    } else {
                         _fireAnimationFromQueue(elementId, queueTypes.resize);
-                        if (moves) _fireAnimationFromQueue(elementId, queueTypes.move);
+                        if(moves && !rotateHandlesMove) _fireAnimationFromQueue(elementId, queueTypes.move);
 
                         $ax.event.raiseSyntheticEvent(elementId, 'onResize');
                     }
                 }
             });
             // Nop move (move handled by resize)
-            if(moves) animations.push({ id: elementId, type: queueTypes.move, func: function() {} });
+            if(rotateInfo) animations.push({ id: elementId, type: queueTypes.rotate, func: function () { } });
+            if(moves) animations.push({ id: elementId, type: queueTypes.move, func: function () { } });
         }
 
         _addAnimations(animations);

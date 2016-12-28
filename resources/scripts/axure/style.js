@@ -202,9 +202,9 @@
                 });
             }
         }
-
         var obj = $obj(id);
         if(obj) {
+            var actionId = id;
             if ($ax.public.fn.IsDynamicPanel(obj.type) || $ax.public.fn.IsLayer(obj.type)) {
                 var children = $axure('#' + id).getChildren()[0].children;
                 for(var i = 0; i < children.length; i++) {
@@ -219,27 +219,34 @@
                     } else $axure('#' + childId).selected(value);
                 }
             } else {
-                while(obj.isContained && !_widgetHasState(id, 'selected')) obj = obj.parent;
+                var widgetHasSelectedState = _widgetHasState(id, SELECTED);
+                while(obj.isContained && !widgetHasSelectedState) obj = obj.parent;
                 var itemId = $ax.repeater.getItemIdFromElementId(id);
                 var path = $ax.getPathFromScriptId($ax.repeater.getScriptIdFromElementId(id));
                 path[path.length - 1] = obj.id;
-                id = $ax.getElementIdFromPath(path, { itemNum: itemId });
-                if(alwaysApply || _widgetHasState(id, SELECTED)) {
-                    var state = _generateSelectedState(id, value);
-                    _applyImageAndTextJson(id, state);
-                    _updateElementIdImageStyle(id, state);
+                actionId = $ax.getElementIdFromPath(path, { itemNum: itemId });
+                if(alwaysApply || widgetHasSelectedState) {
+                    var state = _generateSelectedState(actionId, value);
+                    _applyImageAndTextJson(actionId, state);
+                    _updateElementIdImageStyle(actionId, state);
                 }
+                //added actionId and this hacky logic because we set style state on child, but interaction on parent
+                //then the id saved in _selectedWidgets would be depended on widgetHasSelectedState... more see case 1818143
+                while(obj.isContained && !$ax.getObjectFromElementId(id).interactionMap) obj = obj.parent;
+                path = $ax.getPathFromScriptId($ax.repeater.getScriptIdFromElementId(id));
+                path[path.length - 1] = obj.id;
+                actionId = $ax.getElementIdFromPath(path, { itemNum: itemId });
             }
         }
 
         //    ApplyImageAndTextJson(id, value ? 'selected' : 'normal');
         _selectedWidgets[id] = value;
-
-        if(raiseSelectedEvents) $ax.event.raiseSelectedEvents(id, value);
+        if(raiseSelectedEvents) $ax.event.raiseSelectedEvents(actionId, value);
     };
 
     var _generateSelectedState = function(id, selected) {
-        var mouseState = $ax.event.mouseDownObjectId == id ? MOUSE_DOWN : $ax.event.mouseOverIds.indexOf(id) != -1 ? MOUSE_OVER : NORMAL;
+        var mouseState = $ax.event.mouseDownObjectId == id ? MOUSE_DOWN : $.inArray(id, $ax.event.mouseOverIds) != -1 ? MOUSE_OVER : NORMAL;
+        //var mouseState = $ax.event.mouseDownObjectId == id ? MOUSE_DOWN : $ax.event.mouseOverIds.indexOf(id) != -1 ? MOUSE_OVER : NORMAL;
         return _generateMouseState(id, mouseState, selected);
     };
 
@@ -264,16 +271,16 @@
         // Right now this is the only style on the widget. If other styles (ex. Rollover), are allowed
         //  on TextBox/TextArea, or Placeholder is applied to more widgets, this may need to do more.
         var obj = $jobj(inputId);
-        obj.attr('style', '');
-        if (!value) {
-            var height = document.getElementById(inputId).style['height'];
-            var width = document.getElementById(inputId).style['width'];
-            obj.attr('style', '');
-            //removing all styles, but now we can change the size, so we should add them back
-            //this is more like a quick hack
-            if(height) obj.css('height', height);
-            if(width) obj.css('width', width);
 
+        var height = document.getElementById(inputId).style['height'];
+        var width = document.getElementById(inputId).style['width'];
+        obj.attr('style', '');
+        //removing all styles, but now we can change the size, so we should add them back
+        //this is more like a quick hack
+        if (height) obj.css('height', height);
+        if (width) obj.css('width', width);
+
+        if(!value) {
             try { //ie8 and below error
                 if(password) document.getElementById(inputId).type = 'password';
             } catch(e) { } 
@@ -449,12 +456,14 @@
 
     var _getShapeIdFromText = $ax.style.GetShapeIdFromText = function(id) {
         if(!id) return undefined; // this is to prevent an infinite loop.
-        //return $jobj(id).parent().attr('id');
-        var current = $jobj(id).parent();
-        while(!current.is("body")) {
-            var currentId = current.attr('id');
+
+        var current = document.getElementById(id);
+        if(!current) return undefined;
+        current = current.parentElement;
+        while(current && current.tagName != 'BODY') {
+            var currentId = current.id;
             if(currentId && currentId != 'base') return $ax.visibility.getWidgetFromContainer(currentId);
-            current = current.parent();
+            current = current.parentElement;
         }
 
         return undefined;
@@ -480,9 +489,7 @@
         if(imageUrl) _applyImage(id, imageUrl, event);
 
         var style = _computeAllOverrides(id, undefined, event, $ax.adaptive.currentViewId);
-        if(!$.isEmptyObject(style)) {
-            _applyTextStyle(textId, style);
-        }
+        if(!$.isEmptyObject(style)) _applyTextStyle(textId, style);
 
         _updateStateClasses(id, event);
         _updateStateClasses($ax.repeater.applySuffixToElementId(id, '_div'), event);
@@ -501,7 +508,7 @@
         //} else {
             for (var i = 0; i < ALL_STATES.length; i++) jobj.removeClass(ALL_STATES[i]);
             if (event == 'mouseDown') jobj.addClass('mouseOver');
-            jobj.addClass(event);
+            if(event != 'normal') jobj.addClass(event);
         //}
     }
 
@@ -668,8 +675,9 @@
 
         var style = _computeFullStyle(shapeId, state, $ax.adaptive.currentViewId);
         var vAlign = style.verticalAlignment || 'middle';
-        var paddingLeft = Number(style.paddingLeft || 0);
-        paddingLeft += shapeObj && shapeObj.extraLeft || 0;
+
+        var paddingLeft = Number(style.paddingLeft) || 0;
+        paddingLeft += (Number(shapeObj && shapeObj.extraLeft) || 0);
         var paddingTop = style.paddingTop || 0;
         var paddingRight = style.paddingRight || 0;
         var paddingBottom = style.paddingBottom || 0;
@@ -776,23 +784,11 @@
     // this is for vertical alignments set on hidden objects
     var _idToAlignProps = {};
 
-    _style.checkAlignmentQueue = function (id) {
-        var index = queuedTextToAlign.indexOf(id);
-        if (index != -1) {
-            $ax.splice(queuedTextToAlign, index, 1);
-            _style.updateTextAlignmentForVisibility(id);
-        }
-    }
-
-    var queuedTextToAlign = [];
     $ax.style.updateTextAlignmentForVisibility = function (textId) {
         var textObj = $jobj(textId);
         // must check if parent id exists. Doesn't exist for text objs in check boxes, and potentially elsewhere.
         var parentId = textObj.parent().attr('id');
-        if (parentId && $ax.visibility.isContainer(parentId)) {
-            if (queuedTextToAlign.indexOf(textId) == -1) queuedTextToAlign.push(textId);
-            return;
-        }
+        if (parentId && $ax.visibility.isContainer(parentId)) return;
 
         var alignProps = _idToAlignProps[textId];
         if(!alignProps || !_getObjVisible(textId)) return;
@@ -800,7 +796,7 @@
         _setTextAlignment(textId, alignProps);
     };
 
-    var _getObjVisible = _style.getObjVisible = function(id) {
+    var _getObjVisible = _style.getObjVisible = function (id) {
         var element = document.getElementById(id);
         return element && (element.offsetWidth || element.offsetHeight);
     };
@@ -919,20 +915,11 @@
 
     $ax.style.clearAdaptiveStyles = function() {
         for(var shapeId in _adaptiveStyledWidgets) {
-            var elementIds = [shapeId];
             var repeaterId = $ax.getParentRepeaterFromScriptId(shapeId);
-            if(repeaterId) {
-                var itemIds = $ax.getItemIdsForRepeater(repeaterId);
-                elementIds = [];
-                for(var i = 0; i < itemIds; i++) elementIds.push($ax.repeater.createElementId(shapeId, itemIds[i]));
-            }
-            for(var index = 0; index < elementIds.length; index++) {
-                var elementId = _getButtonShapeId(elementIds[index]);
-                if(elementId) {
-                    var textId = $ax.style.GetTextIdFromShape(elementId);
-                    _resetTextJson(elementId, textId);
-                    _applyImageAndTextJson(elementId, $ax.style.generateState(elementId));
-                }
+            if(repeaterId) continue;
+            var elementId = _getButtonShapeId(shapeId);
+            if(elementId) {
+                _applyImageAndTextJson(elementId, $ax.style.generateState(elementId));
             }
         }
 

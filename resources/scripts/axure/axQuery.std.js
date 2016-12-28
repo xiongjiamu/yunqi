@@ -57,6 +57,13 @@ $axure.internal(function($ax) {
     var PLAIN_TEXT_TYPES = [$ax.constants.TEXT_BOX_TYPE, $ax.constants.TEXT_AREA_TYPE, $ax.constants.LIST_BOX_TYPE,
         $ax.constants.COMBO_BOX_TYPE, $ax.constants.CHECK_BOX_TYPE, $ax.constants.RADIO_BUTTON_TYPE, $ax.constants.BUTTON_TYPE];
 
+    $ax.public.fn.IsResizable = function (type) { return $.inArray(type, RESIZABLE_TYPES) !== -1; }
+    var RESIZABLE_TYPES = [
+        $ax.constants.BUTTON_TYPE, $ax.constants.DYNAMIC_PANEL_TYPE, $ax.constants.IMAGE_BOX_TYPE, $ax.constants.IMAGE_MAP_REGION_TYPE,
+        $ax.constants.INLINE_FRAME_TYPE, $ax.constants.LAYER_TYPE, $ax.constants.LIST_BOX_TYPE, $ax.constants.COMBO_BOX_TYPE,
+        $ax.constants.VECTOR_SHAPE_TYPE, $ax.constants.TEXT_AREA_TYPE, $ax.constants.TEXT_BOX_TYPE, $ax.constants.SNAPSHOT_TYPE
+    ];
+
     var _addJQueryFunction = function(name) {
         $ax.public.fn[name] = function() {
             var val = $.fn[name].apply(this.jQuery(), arguments);
@@ -217,11 +224,6 @@ $axure.internal(function($ax) {
                 // Remove lightbox, unregister flyout
                 lightbox.remove();
                 $ax.flyoutManager.unregisterPanel(elementId, true);
-
-                _setVisibility(elementId, true, options);
-                if(options && options.showType == 'front') $ax.legacy.BringToFront(elementId);
-
-                continue;
             }
             _setVisibility(elementId, true, options);
         }
@@ -229,53 +231,53 @@ $axure.internal(function($ax) {
         return this;
     };
 
-    var _getAnimateInfo = function(options, defaultDuration) {
+    var _getAnimateInfo = function (options, defaultDuration, useHide) {
         var animateInfo = {
-            easingType: 'none',
-            direction: '',
-            duration: options && options.duration || defaultDuration
+            duration: options && (useHide ? options.durationHide : options.duration) || defaultDuration
         };
 
-        if(options && options.easing) {
-            switch(options.easing) {
-            case 'fade':
-                animateInfo.easingType = 'fade';
-                animateInfo.direction = '';
-                break;
-            case 'slideLeft':
-                animateInfo.easingType = 'swing';
-                animateInfo.direction = 'left';
-                break;
-            case 'slideRight':
-                animateInfo.easingType = 'swing';
-                animateInfo.direction = 'right';
-                break;
-            case 'slideUp':
-                animateInfo.easingType = 'swing';
-                animateInfo.direction = 'up';
-                break;
-            case 'slideDown':
-                ;
-                animateInfo.easingType = 'swing';
-                animateInfo.direction = 'down';
-                break;
-            case 'flipLeft':
-                animateInfo.easingType = 'flip';
-                animateInfo.direction = 'left';
-                break;
-            case 'flipRight':
-                animateInfo.easingType = 'flip';
-                animateInfo.direction = 'right';
-                break;
-            case 'flipUp':
-                animateInfo.easingType = 'flip';
-                animateInfo.direction = 'up';
-                break;
-            case 'flipDown':
-                animateInfo.easingType = 'flip';
-                animateInfo.direction = 'down';
-                break;
-            }
+        var easing = options && (useHide ? options.easingHide : options.easing) || 'none';
+        switch (easing) {
+        case 'fade':
+            animateInfo.easingType = 'fade';
+            animateInfo.direction = '';
+            break;
+        case 'slideLeft':
+            animateInfo.easingType = 'swing';
+            animateInfo.direction = 'left';
+            break;
+        case 'slideRight':
+            animateInfo.easingType = 'swing';
+            animateInfo.direction = 'right';
+            break;
+        case 'slideUp':
+            animateInfo.easingType = 'swing';
+            animateInfo.direction = 'up';
+            break;
+        case 'slideDown':
+            ;
+            animateInfo.easingType = 'swing';
+            animateInfo.direction = 'down';
+            break;
+        case 'flipLeft':
+            animateInfo.easingType = 'flip';
+            animateInfo.direction = 'left';
+            break;
+        case 'flipRight':
+            animateInfo.easingType = 'flip';
+            animateInfo.direction = 'right';
+            break;
+        case 'flipUp':
+            animateInfo.easingType = 'flip';
+            animateInfo.direction = 'up';
+            break;
+        case 'flipDown':
+            animateInfo.easingType = 'flip';
+            animateInfo.direction = 'down';
+            break;
+        default:
+            animateInfo.easingType = 'none';
+            animateInfo.direction = '';
         }
 
         return animateInfo;
@@ -299,15 +301,14 @@ $axure.internal(function($ax) {
         for (var index = 0; index < elementIds.length; index++) {
             var elementId = elementIds[index];
             var show = !$ax.visibility.IsIdVisible(elementId);
-            _setVisibility(elementId, show, options);
+            _setVisibility(elementId, show, options, !show);
         }
 
         return this;
     };
 
-    var _setVisibility = function (elementId, value, options) {
-
-        var animateInfo = _getAnimateInfo(options, 0);
+    var _setVisibility = function (elementId, value, options, useHide) {
+        var animateInfo = _getAnimateInfo(options, 0, useHide);
 
         var wasShown = $ax.visibility.IsIdVisible(elementId);
         var compress = options && options.showType == 'compress' && wasShown != value;
@@ -328,6 +329,8 @@ $axure.internal(function($ax) {
         });
         if(compress && !compressed) $ax.dynamicPanelManager.compressToggle(elementId, options.vertical, value, options.compressEasing, options.compressDuration);
         compressed = true;
+
+        if(options && options.bringToFront) $ax.legacy.BringToFront(elementId);
     };
 
     $ax.public.fn.setOpacity = function(opacity, easing, duration) {
@@ -351,7 +354,6 @@ $axure.internal(function($ax) {
             } else query.animate({ opacity: opacity }, { duration: duration, easing: easing, queue: false, complete: onComplete });
         }
     }
-
     //move one widget.  I didn't combine moveto and moveby, since this is in .public, and separate them maybe more clear for the user
     var _move = function (elementId, x, y, options, moveTo) {
         if(!options.easing) options.easing = 'none';
@@ -360,28 +362,11 @@ $axure.internal(function($ax) {
 
         // Layer move using container now.
         if($ax.public.fn.IsLayer(obj.type)) {
-            var moveInfo = $ax.move.RegisterMoveInfo(elementId, x, y, moveTo, options);
-            //$ax.event.raiseSyntheticEvent(elementId, "onMove");
-
-            //var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId, true);
-            //for(var i = 0; i < childrenIds.length; i++) $ax.event.raiseSyntheticEvent(childrenIds[i], 'onMove');
-
             $ax.move.MoveWidget(elementId, x, y, options, moveTo,
                 function () {
                     if(options.onComplete) options.onComplete();
                     $ax.dynamicPanelManager.fitParentPanel(elementId);
-                }, false, undefined, moveInfo);
-            //var childrenIds = $ax.public.fn.getLayerChildrenDeep(elementId);
-            //if(childrenIds.length == 0) return;
-
-            //for(var i = 0; i < childrenIds.length - 1; i++) {
-            //    $ax.move.MoveWidget(childrenIds[i], x, y, easing, duration, moveTo,
-            //        function() { $ax.dynamicPanelManager.fitParentPanel(childrenIds[i]); }, false);
-            //}
-
-            //$ax.move.MoveWidget(childrenIds[i], x, y, easing, duration, moveTo,
-            //    function () { $ax.dynamicPanelManager.fitParentPanel(childrenIds[i]); }, true, null, elementId);
-
+                }, false);
         } else {
             var xDelta = x;
             var yDelta = y;
@@ -393,13 +378,10 @@ $axure.internal(function($ax) {
                 xDelta = x - left;
                 yDelta = y - top;
             }
-            moveInfo = $ax.move.RegisterMoveInfo(elementId, xDelta, yDelta, false, options);
-            //$ax.event.raiseSyntheticEvent(elementId, "onMove");
             $ax.move.MoveWidget(elementId, xDelta, yDelta, options, false,
-                function () { $ax.dynamicPanelManager.fitParentPanel(elementId); }, true, undefined, moveInfo);
+                function () { $ax.dynamicPanelManager.fitParentPanel(elementId); }, true);
         }
     };
-
 
     $ax.public.fn.moveTo = function (x, y, options) {
         var elementIds = this.getElementIds();
@@ -416,7 +398,8 @@ $axure.internal(function($ax) {
         if(x == 0 && y == 0) {
             for(var i = 0; i < elementIds.length; i++) {
                 var elementId = elementIds[i];
-                $ax.move.nopMove(elementId);
+                $ax.move.nopMove(elementId, options);
+
                 //$ax.event.raiseSyntheticEvent(elementId, "onMove");
                 $ax.action.fireAnimationFromQueue(elementId, $ax.action.queueTypes.move);
 
@@ -442,7 +425,7 @@ $axure.internal(function($ax) {
             var elementId = elementIds[index];
 
             var onComplete = function () {
-                if (doRotation) $ax.dynamicPanelManager.fitParentPanel(elementId);
+                $ax.dynamicPanelManager.fitParentPanel(elementId);
                 if (moveComplete) moveComplete();
             }
 
@@ -470,12 +453,14 @@ $axure.internal(function($ax) {
         for(var index = 0; index < elementIds.length; index++) {
             var elementId = elementIds[index];
 
+            var obj = $obj(elementId);
+            if(!$ax.public.fn.IsResizable(obj.type)) continue;
+
             var oldSize = $ax('#' + elementId).size();
             var oldWidth = oldSize.width;
             var oldHeight = oldSize.height;
             var query = $jobj(elementId);
 
-            var obj = $obj(elementId);
             var isDynamicPanel = $ax.public.fn.IsDynamicPanel(obj.type);
             if(isDynamicPanel) {
                 // No longer fitToContent, calculate additional styling that needs to be done.
@@ -520,7 +505,7 @@ $axure.internal(function($ax) {
                         //var currentTextHeight = Number($(textChildren.children('p')[0]).css('height').replace('px', ''));
                         //textChildren.css('height', currentTextHeight);
                         var display = $ax.public.fn.displayHackStart(document.getElementById(textDivId));
-                        $ax.style.updateTextAlignmentForVisibility(textDivId, true);
+                        $ax.style.updateTextAlignmentForVisibility(textDivId);
                         $ax.public.fn.displayHackEnd(display);
                     };
                 }
@@ -538,9 +523,13 @@ $axure.internal(function($ax) {
             }
 
             var children = query.children().not('div.text');
+            while(children && children.length && $(children[0]).attr('id').indexOf('container') != -1) {
+                children = children.children().not('div.text');
+            }
+
             if(children && children.length !== 0) {
                 var childAnimationArray = [];
-                var isConnector = $ax.public.fn.IsConnector($obj(elementId).type);
+                var isConnector = $ax.public.fn.IsConnector(obj.type);
                 children.each(function (i, child) {
                     var childCss = {
                         width: newLocationAndSizeCss.width,
@@ -1217,24 +1206,52 @@ $axure.internal(function($ax) {
 
     var _fixedOffset = function (id, vert) {
         var axObj = $obj(id);
-        var obj = $jobj(id);
         var dim = vert ? 'height' : 'width';
         var vertKey = (vert ? 'Vertical' : 'Horizontal');
         var key = 'fixed' + vertKey;
         var alignment = axObj[key];
-        var loc = axObj['fixedMargin' + vertKey];
+        if(!alignment) return { valid: false };
+        var loc = 0;
+
+        // TODO: This returns 0 for width/height it or any parent is display none. Similar issue when using axquery width/height
+        // TODO:  Look into replacing this with axquery width/height and fixing that to use this hack. Potentially want to make js generic trapper.
+        var trap = _displayWidget(id);
+        var query = $jobj(id);
+        var objSize = query[dim]();
+        trap();
+
         if(alignment == 'center' || alignment == 'middle') {
-            loc += ($(window)[dim]() - obj[dim]()) / 2;
+            loc = $ax.getNumFromPx(query.css('margin-' + (vert ? 'top' : 'left')));
+            loc += ($(window)[dim]()) / 2;
         } else if(alignment == 'bottom' || alignment == 'right') {
-            loc = $(window)[dim]() - obj[dim]() - loc; // subract loc because margin here moves farther left/up as it gets bigger.
+            loc = $ax.getNumFromPx(query.css(vert ? 'bottom' : 'right'));
+            loc = $(window)[dim]() - objSize - loc; // subract loc because margin here moves farther left/up as it gets bigger.
+        } else {
+            loc = $ax.getNumFromPx(query.css(vert ? 'top' : 'left'));
         }
 
-        if(axObj[key]) {
-            var scrollKey = 'scroll' + (vert ? 'Y' : 'X');
-            return { offset: window[scrollKey] + loc, valid: true };
-        }
-
-        return { valid: false };
+        var scrollKey = 'scroll' + (vert ? 'Y' : 'X');
+        return { offset: window[scrollKey] + loc, valid: true };
     };
 
+    var _displayWidget = function(id) {
+        var parents = $ax('#' + id).getParents(true, '*')[0];
+        parents.push(id); // also need to show self
+
+        var displayed = [];
+        for(var i = 0; i < parents.length; i++) {
+            var currId = parents[i];
+            var currObj = $jobj(currId);
+            if(currObj.css('display') == 'none') {
+                currObj.css('display', 'block');
+                displayed.push(currId);
+            }
+        }
+
+        return function() {
+            for(var i = 0; i < displayed.length; i++) {
+                $jobj(displayed[i]).css('display', 'none');
+            }
+        };
+    }
 });

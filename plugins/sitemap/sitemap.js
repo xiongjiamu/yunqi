@@ -21,8 +21,7 @@ function openPreviousPage() {
     var SHOW_HIDE_ANIMATION_DURATION = 0;
 
     var HIGHLIGHT_INTERACTIVE_VAR_NAME = 'hi';
-    var ADAPTIVE_VIEW_VAR_NAME = 'view';
-
+    
     var currentPageLoc = '';
     var currentPlayerLoc = '';
     var currentPageHashString = '';
@@ -181,16 +180,12 @@ function openPreviousPage() {
         $(this)
             .children('.sitemapMinus').removeClass('sitemapMinus').addClass('sitemapPlus').end()
             .closest('li').children('ul').hide(SHOW_HIDE_ANIMATION_DURATION);
-
-        $(this).next('.sitemapFolderOpenIcon').removeClass('sitemapFolderOpenIcon').addClass('sitemapFolderIcon');
     }
 
     function expand_click(event) {
         $(this)
             .children('.sitemapPlus').removeClass('sitemapPlus').addClass('sitemapMinus').end()
             .closest('li').children('ul').show(SHOW_HIDE_ANIMATION_DURATION);
-
-        $(this).next('.sitemapFolderIcon').removeClass('sitemapFolderIcon').addClass('sitemapFolderOpenIcon');
     }
 
     function node_click(event) {
@@ -466,10 +461,7 @@ function openPreviousPage() {
         }
         returnVal += "<span class='sitemapPageIcon";
         if(node.type == "Flow") { returnVal += " sitemapFlowIcon"; }
-        if(isFolder) {
-            if(hasChildren) returnVal += " sitemapFolderOpenIcon";
-            else returnVal += " sitemapFolderIcon";
-        }
+        if(isFolder) { returnVal += " sitemapFolderIcon"; }
 
         returnVal += "'></span><span class='sitemapPageName'>";
         returnVal += $('<div/>').text(node.pageName).html();

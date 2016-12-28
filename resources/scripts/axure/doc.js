@@ -34,6 +34,11 @@
             var style = customStyles[key];
             stylesById[style.id] = style;
         }
+        var duplicateStyles = stylesheet.duplicateStyles;
+        for(var duplicateKey in duplicateStyles) {
+            stylesById[duplicateKey] = stylesById[duplicateStyles[duplicateKey]];
+        }
+
         stylesheet.stylesById = stylesById;
     };
 
@@ -290,6 +295,14 @@
         };
         $ax.getWindowInfo = _getWindowInfo;
 
+        var repeaterInfoCache = [];
+        $ax.cacheRepeaterInfo = function(repeaterId, repeaterInfo) {
+            repeaterInfoCache[repeaterId] = repeaterInfo;
+        }
+        $ax.removeCachedRepeaterInfo = function (repeaterId) {
+            repeaterInfoCache[repeaterId] = undefined;
+        }
+
         var _getItemInfo = function(elementId) {
             if(!elementId) return { valid: false };
 
@@ -302,7 +315,7 @@
 
             var scriptId = $ax.repeater.getScriptIdFromElementId(elementId);
             var repeaterId = $ax.getParentRepeaterFromScriptId(scriptId);
-            item.repeater = _getWidgetInfo(repeaterId);
+            item.repeater = repeaterInfoCache[repeaterId] ? repeaterInfoCache[repeaterId] : _getWidgetInfo(repeaterId);
             $ax.repeater.setDisplayProps(item, repeaterId, index);
             item.ismarked = $ax.repeater.isEditItem(repeaterId, index);
             item.isvisible = Boolean($jobj(elementId).length);
@@ -324,14 +337,13 @@
             widget.name = widget.label = (elementQuery.data('label') ? elementQuery.data('label') : '');
             widget.text = $ax('#' + elementId).text();
             widget.opacity = Number(elementQuery.css('opacity')) * 100;
+            widget.rotation = $ax.move.getRotationDegree(widget.elementId);
             var scriptId = $ax.repeater.getScriptIdFromElementId(elementId);
             var repeaterId = $ax.getParentRepeaterFromScriptId(scriptId);
             if (repeaterId) widget.repeater = $ax.public.fn.IsRepeater(obj.type) ? widget : _getWidgetInfo(repeaterId);
 
-            var boundingRect = $ax.public.fn.getWidgetBoundingRect(elementId);
-
             if($ax.public.fn.IsLayer(obj.type)) {
-                
+                var boundingRect = $ax.public.fn.getWidgetBoundingRect(elementId);
                 widget.x = boundingRect.left;
                 widget.y = boundingRect.top;
                 widget.width = boundingRect.width;
@@ -391,11 +403,19 @@
                 widget.pageindex = $ax.repeater.getPageIndex(scriptId);
             }
 
-            widget.left = widget.x;
-            widget.top = widget.y;
-            widget.right = widget.x + widget.width;
-            widget.bottom = widget.y + widget.height;
+            widget.left = widget.leftfixed = widget.x;
+            widget.top = widget.topfixed = widget.y;
+            widget.right = widget.rightfixed = widget.x + widget.width;
+            widget.bottom = widget.bottomfixed = widget.y + widget.height;
 
+            if(elementQuery.css('position') == 'fixed') {
+                var windowScrollLeft = $(window).scrollLeft();
+                var windowScrollTop = $(window).scrollTop();
+                widget.leftfixed = widget.left - windowScrollLeft;
+                widget.topfixed = widget.top - windowScrollTop;
+                widget.rightfixed = widget.right - windowScrollLeft;
+                widget.bottomfixed = widget.bottom - windowScrollTop;
+            }
             return widget;
         };
         $ax.getWidgetInfo = _getWidgetInfo;
@@ -449,6 +469,11 @@
 
         $ax.getParentRepeaterFromElementId = function(elementId) {
             return $ax.getParentRepeaterFromScriptId($ax.repeater.getScriptIdFromElementId(elementId));
+        };
+
+        $ax.getParentRepeaterFromElementIdExcludeSelf = function (elementId) {
+            var repeaterId = $ax.getParentRepeaterFromElementId(elementId);
+            return repeaterId != elementId ? repeaterId : undefined;
         };
 
         $ax.getParentRepeaterFromScriptId = function(scriptId) {
@@ -557,14 +582,15 @@
             targetUrl = !includeVariables ? to.url : $ax.globalVariableProvider.getLinkUrl(to.url);
 
             if(to.target == "new") {
-                window.open(targetUrl, to.name);
+                window.open(targetUrl, "");
             } else if(to.target == "popup") {
                 var features = _getPopupFeatures(to.popupOptions);
-                window.open(targetUrl, to.name, features);
+                window.open(targetUrl, "", features);
             } else {
                 var targetLocation = window.location;
                 if(to.target == "current") {
                 } else if(to.target == "parent") {
+                    if(!top.opener) return;
                     targetLocation = top.opener.window.location;
                 } else if(to.target == "parentFrame") {
                     targetLocation = parent.location;

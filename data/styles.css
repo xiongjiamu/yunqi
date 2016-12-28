@@ -24,38 +24,48 @@
 .line {
 }
 .heading_1 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   font-size:32px;
   text-align:left;
 }
 .heading_2 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   font-size:24px;
   text-align:left;
 }
 .heading_3 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   font-size:18px;
   text-align:left;
 }
 .heading_4 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   font-size:14px;
   text-align:left;
 }
 .heading_5 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   text-align:left;
 }
 .heading_6 {
-  font-family:'Arial Negreta', 'Arial';
+  font-family:'Arial Negreta', 'Arial Normal', 'Arial';
   font-weight:700;
+  font-style:normal;
   font-size:10px;
+  text-align:left;
+}
+.label {
+  font-size:14px;
   text-align:left;
 }
 .shape {
@@ -87,6 +97,8 @@
 .box_4 {
   color:#FFFFFF;
 }
+.ellipse {
+}
 .image {
   color:#000000;
 }
@@ -105,4 +117,8 @@
   text-align:left;
 }
 .flow_shape {
+}
+.text_field1 {
+  color:#000000;
+  text-align:left;
 }
